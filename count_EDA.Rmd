@@ -1,0 +1,104 @@
+---
+title: "Count_EDA"
+author: "Brian Gudenas"
+date: "12/12/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+# 
+# BASE="Clingen"
+# R -e "rmarkdown::render('/Users/bgudenas/Helpers/Count_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" 
+```
+
+
+```{r Libs}
+#!/usr/bin/env Rscript
+args = commandArgs( trailingOnly=TRUE )
+
+if (length(args)!= 1) {
+  stop("Count Matrix must be given .n", call.=FALSE)
+}
+
+library(DESeq2)
+library(WGCNA)
+library(ggplot2)
+library(Rtsne)
+```
+
+
+```{r EDA}
+counts = read.csv(args[1], row.names =1)
+annots = data.frame("IDs" = colnames(counts), "Sample" = as.factor(1) )
+
+DEmat =DESeqDataSetFromMatrix(countData = counts, colData = annots, design = ~ 1 ) 
+DE  = DESeq(DEmat)
+
+
+boxplot(log10(assays(DE)[["cooks"]]), range=0, las=2, ylab = expression(Log[10]~Cooks~Distance), main = "Sample Counts" )
+
+vsd <- varianceStabilizingTransformation(DE, blind = TRUE)
+plotPCA(vsd, intgroup = "Sample", ntop = 2000) + 
+#  ggplot( aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0) +
+  geom_text(aes(label = annots$IDs ), col = "Black") + 
+  theme(legend.position="none")
+
+
+counts = assay(vsd)
+counts = counts[rowVars(counts) > median(rowVars(counts)), ]
+
+sampleDists = as.dist( 1 - cor(counts) ) 
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <-  colnames(vsd) 
+colnames(sampleDistMatrix) <- vsd$IDs
+colors <- colorRampPalette( rev(RColorBrewer::brewer.pal(9, "Blues")) )(255)
+
+pheatmap::pheatmap(sampleDistMatrix,
+                   clustering_distance_rows=sampleDists,
+                   clustering_distance_cols=sampleDists,
+                   clustering_method = "ward.D2",
+                   col=colors,
+                   show_colnames = FALSE,
+                   main = "BLIND Sample Clustering (VST)")
+
+
+perp = floor((ncol(counts)-1)/3)
+print(perp)
+# if (ncols(counts) > 10 ) {
+   
+set.seed(54321)
+tsne_model_1 = Rtsne(t(as.matrix(counts)), check_duplicates=FALSE, pca=TRUE, perplexity= perp, theta= 0, dims=2, max_iter = 5000)
+
+## getting the two dimension matrix
+d_tsne_1 = as.data.frame(tsne_model_1$Y)
+rownames(d_tsne_1) = colnames(counts)
+
+ggplot(d_tsne_1, aes(x=V1, y=V2)) +
+  geom_point(alpha = 0 ) +
+  geom_text(aes(label=rownames(d_tsne_1))) +
+  theme_minimal() +
+  ggtitle("t-SNE")
+
+
+
+
+sdout <- 3
+normadj <- (0.5+0.5*bicor(counts))^2
+## Calculate connectivity
+
+netsummary <- fundamentalNetworkConcepts(normadj)
+
+ku <- netsummary$Connectivity
+
+z.ku <- ku-(mean(ku))/sqrt(var(ku))
+
+## Declare as outliers those samples which are more than sdout sd above the mean connectivity based on the chosen measure
+
+outliers <- (z.ku > mean(z.ku)+sdout*sd(z.ku))|(z.ku < mean(z.ku)-sdout*sd(z.ku))
+print(paste("There are ",sum(outliers)," outliers samples based on a bicor distance sample network connectivity standard deviation above ", sdout, sep=""))
+print(colnames(counts)[outliers])
+
+```
+
