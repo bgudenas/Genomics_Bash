@@ -1,8 +1,10 @@
+## Merge Log.final files from STAR output
+## Creates csv with mapping stats
 
 args = commandArgs( trailingOnly=TRUE )
 
-if (length(args)==0) {
-  stop("At least one argument (prefix_name)  must be supplied (input file).n", call.=FALSE)
+if (length(args) != 0) {
+  stop(" output prefix_name  must be supplied (input file).n", call.=FALSE)
 }
 
 library(stringr)
