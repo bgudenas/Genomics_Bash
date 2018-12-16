@@ -1,12 +1,14 @@
-#BSUB -P star_north
-#BSUB -R "rusage[mem=3000]"
-#BSUB -n 16
-#BSUB --o mapped.out --eo mapped.err
-
+#BSUB -P SYC07
+#BSUB -R "rusage[mem=5000]"
+#BSUB -n 10
+#BSUB -oo ./Logs/SYC07_STAR.log -eo ./Logs/SYC07_STAR.err
+#BSUB -R "span[hosts=1]"
 RUN="YES"
-NCUT=21
-BASE="northcgrp_125169_totalstranded"
-THR=16
+NCUT=24
+BASE="SYC07"
+TRIM="YES"
+REPAIR="NO"
+THR=10
 
 ## Map reads using STAR multi-sample protocol
 ## first map using basic params
@@ -15,18 +17,19 @@ THR=16
 
 ### fastq files should be in ./Raw/${BASE}/*/ with sample *.fastq.gz inside
 
-### ENSEMBL annots
-GENDIR="../../Annots/Mouse/mm10_star99"
-GTF="../../Annots/Mouse/mmGenes92.gtf"
-
-module purge
-module load samtools/1.7
-printf "STAR RNA-seq mapping############# \n"
 date
+module purge
+module load bbmap/37.28
+module load samtools/1.7
+module load sambamba/0.5.5
+printf "STAR RNA-seq mapping############# \n"
 STAR --version
 
-rm outStar.log
-touch outStar.log
+
+ADAPTERS=/home/bgudenas/Annots/truseq.fa
+
+### ENSEMBL annots
+GENDIR="/home/bgudenas/Annots/Human/star_GRCh38_99"
 #########################################
 
 SAMPNUM=$(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |  sed 's!.*/!!' | sort | uniq -d | wc -l)
@@ -36,8 +39,12 @@ printf "FASTQ'S DETECTED = $(ls -l ./Raw/${BASE}*/*/* | wc -l) \n"
 RLENGTH=$(gunzip -c "$(ls ./Raw/${BASE}*/*/*.gz | head -n1)" | head -n 1000 | awk '{if(NR%4==2) print length($1)}' | sort -n | uniq -c)
 printf "READ LENGTH(n=250) = ${RLENGTH} \n\n"
 
+mkdir -p ./Data/${BASE}
+mkdir -p ./Data/${BASE}/SJ
+mkdir -p ./BAM/${BASE}
 
-for i in $(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |sed 's!.*/!!' | sort | uniq -d)
+
+for i in $(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |sed 's!.*/!!' | sort | uniq )
 do	
     printf "\n"  
     SAMP=$(basename ${i})
@@ -51,8 +58,8 @@ do
     ls -lh $R2
 
 ###################################
-    MR1="./Data/Read1_${SAMP}.fastq.gz"
-    MR2="./Data/Read2_${SAMP}.fastq.gz"
+    MR1="${TMPDIR}/Read1_${SAMP}.fastq.gz"
+    MR2="${TMPDIR}/Read2_${SAMP}.fastq.gz"
     
 if [ "$RUN" = "YES" ]
 	then
@@ -62,23 +69,60 @@ if [ "$RUN" = "YES" ]
     ls -lh $MR1
     ls -lh $MR2
 
+if [ "$TRIM" = "YES" ]
+    then
+
+TR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
+TR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+
+if [ "$REPAIR" = "YES" ]
+    then
+## Fix misordered paired-end files
+FR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq.gz"
+FR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq.gz"
+
+repair.sh -Xmx12g in1=$MR1 in2=$MR2 out1=$FR1 out2=$FR2 outs=$TMPDIR/singletons.fq
+
+## overwrite input to trim
+MR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq.gz"
+MR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq.gz"
+ls -lh $MR1
+ls -lh $MR2
+fi
+
+  bbduk.sh -Xmx12g in1=$MR1 in2=$MR2 \
+      	out1=$TR1 out2=$TR2 \
+      	ref=$ADAPTERS ktrim=r ordered \
+       	k=23 mink=11 hdist=1 tbo tpe \
+       	rcomp=f \
+	    ow=t \
+	    minlen=30 \
+	    trimq=10 \
+	    qtrim=rl
+
+echo "TRIMMED ##########"
+MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
+MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+ls -lh $MR1
+ls -lh $MR2
+fi
+
+if [ ! -f ./Data/${BASE}/SJ/${SAMP}SJ.out.tab ];
+	then
     echo "STAR"
-    STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2\
-    --runThreadN $THR --readFilesCommand gunzip -c \
-    --outFileNamePrefix Data/${SAMP} \
-    --outFilterType BySJout \
+    STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
+    --runThreadN $THR --readFilesCommand zcat \
+    --outFileNamePrefix $TMPDIR/${SAMP} \
+    --outTmpDir $TMPDIR/tmp${SAMP} \
+    --outFilterMismatchNmax 999 \
+    --outFilterMismatchNoverReadLmax 0.05 \
     --alignIntronMin 20 \
     --alignSJDBoverhangMin 1 \
-    --alignIntronMax 1000000 \
-    --alignMatesGapMax 1000000 \
-    --outFilterMismatchNmax 999 \
-    --outFilterMismatchNoverReadLmax  0.05 \
-    --outFilterMultimapNmax 20 \
-    --peOverlapNbasesMin 10 \
-    >> outStar.log 2>&1
+    --outFilterType BySJout \
+    --peOverlapNbasesMin 10
 
-    OUTBAM="./Data/"${SAMP}"Aligned.out.sam"
-    rm $OUTBAM
+    mv $TMPDIR/*SJ.out* ./Data/${BASE}/SJ
+	fi
 fi
 done
 
@@ -87,64 +131,64 @@ done
 ## Move junction files to prevent overwriting
 if [ "$RUN" = "YES" ]
 	then
-mkdir ./Data/${BASE}
-
-mkdir ./Data/${BASE}/SJ
-mv ./Data/*SJ.out* ./Data/${BASE}/SJ
 
 awk -f /home/bgudenas/src/sjCollapseSamples.awk ./Data/${BASE}/SJ/*SJ.out.tab | sort -k1,1V -k2,2n -k3,3n > ./Data/${BASE}/SJ/SJ.all
 grep -E -v "KI|GL|MT" ./Data/${BASE}/SJ/SJ.all > ./Data/${BASE}/SJ/SJ.pass1
 awk '{ if ($10 >= 2) { print } }' ./Data/${BASE}/SJ/SJ.pass1 > ./Data/${BASE}/SJ/SJ.Filtered
 
-mkdir -p ./BAM/${BASE}
 	fi
 
 for i in $(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |sed 's!.*/!!' | sort | uniq -d)
 do
     SAMP=$(basename ${i})
     echo "ROUND 2 -- ${SAMP}"
-    MR1="./Data/Read1_"${SAMP}".fastq.gz"
-    MR2="./Data/Read2_"${SAMP}".fastq.gz"
 if [ "$RUN" = "YES" ]
 	then
+    MR1="${TMPDIR}/Read1_${SAMP}.fastq.gz"
+    MR2="${TMPDIR}/Read2_${SAMP}.fastq.gz"
+    if [ "$TRIM" = "YES" ]
+        then
+        MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
+        MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+        fi
+
 STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
-    --runThreadN $THR --outBAMsortingThreadN $THR --readFilesCommand gunzip -c \
-    --outFileNamePrefix Data/${BASE}/${SAMP} \
-    --outSAMtype BAM SortedByCoordinate --outSAMattrIHstart 0 \
+    --runThreadN $THR --readFilesCommand zcat \
+    --outFileNamePrefix ./Data/${BASE}/${SAMP} \
+    --outSAMtype BAM Unsorted \
     --quantMode GeneCounts  \
     --sjdbFileChrStartEnd ./Data/${BASE}/SJ/SJ.Filtered ./Data/${BASE}/SJ/${SAMP}SJ.out.tab \
-    --outReadsUnmapped Fastx \
     --peOverlapNbasesMin 10 \
-    --limitSjdbInsertNsj 1200000 \
-    --outFilterType BySJout \
-    --alignIntronMin 20 \
     --alignSJDBoverhangMin 1 \
-    --alignIntronMax 1000000 \
-    --alignMatesGapMax 1000000 \
+    --limitSjdbInsertNsj 2000000 \
     --outFilterMismatchNmax 999 \
-    --outFilterMismatchNoverReadLmax  0.05 \
-    --outFilterMultimapNmax 20 \
-    --limitBAMsortRAM 50000000000 \
-    >> outStar.log 2>&1
-    
+    --outFilterMismatchNoverReadLmax 0.05 \
+    --alignIntronMin 20 \
+    --outFilterType BySJout \
+    --outTmpDir $TMPDIR/tmp2${SAMP}
+   
    #Add XS attribute
-    OUTBAM="./Data/"${BASE}"/"${SAMP}"Aligned.sortedByCoord.out.bam"
-   ls $OUTBAM
-   samtools view --threads $THR -h $OUTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > "./Data/"${BASE}"/"${SAMP}"XS.bam"
-   rm $OUTBAM
-   rm $MR1
-   rm $MR2
-   rm -rf ./Data/${SAMP}*
-   mkdir -p ./BAM/${BASE}
-   mv ./Data/${BASE}/*XS.bam ./BAM/${BASE}/
-   mv ./Data/${BASE}/*Unmapped* ./BAM/${BASE}/
+   INBAM="./Data/${BASE}/${SAMP}Aligned.out.bam"
+   SORTBAM="./BAM/${BASE}/${SAMP}Aligned.sortedByCoord.out.bam"
+
+sambamba sort -t $THR -m 48G --tmpdir $TMPDIR \
+ 	-o $SORTBAM $INBAM   
+
+  # samtools view --threads $THR -h $SORTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > "./Data/"${BASE}"/"${SAMP}"XS.bam"
+
 	fi
 done
 
 cat ./Data/${BASE}/*Log.final* | grep -E 'Number of input reads|Uniquely mapped reads %'
 date
 
-module load R/3.4.0
-cd ./Data/${BASE}
-Rscript /home/bgudenas/src/countMat.R 
-cd ../..
+
+if [ "$RUN" = "YES" ]
+	then
+	module load R/3.4.0
+	cd ./Data/${BASE}
+	Rscript /home/bgudenas/src/Parse_STARLogs.R ${BASE}
+	Rscript /home/bgudenas/src/countMat.R "Human"
+	cd ../..
+fi
+
