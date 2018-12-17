@@ -5,30 +5,31 @@ date: "12/12/2018"
 output: html_document
 ---
 
-```{r setup, include=FALSE, echo = FALSE}
+```{r setup, include=FALSE, echo = TRUE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 # 
 # BASE="Clingen"
-# R -e "rmarkdown::render('/Users/bgudenas/Helpers/Count_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" 
+# R -e "rmarkdown::render('/Users/bgudenas/Helpers/Count_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" 
 ```
 
 
-```{r Libs, include = FALSE}
+```{r Libs, include = TRUE}
 #!/usr/bin/env Rscript
 args = commandArgs( trailingOnly=TRUE )
 
-if (length(args)!= 1) {
-  stop("Count Matrix must be given .n", call.=FALSE)
+if (length(args)!= 2) {
+  stop("Count Matrix must be given & STAR Log dir .n", call.=FALSE)
 }
-
-library(DESeq2)
-library(WGCNA)
-library(ggplot2)
-library(Rtsne)
+#print(args[1])
+print(args[2])
+#library(DESeq2)
+#library(WGCNA)
+#library(ggplot2)
+#library(Rtsne)
 ```
 
 
-```{r EDA}
+```{r EDA, eval =FALSE}
 counts = read.csv(args[1], row.names =1)
 annots = data.frame("IDs" = colnames(counts), "Sample" = as.factor(1) )
 
