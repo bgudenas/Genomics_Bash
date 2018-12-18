@@ -34,6 +34,10 @@ Logs = read.csv(args[2] )
 annots$Tota_Reads = df$Total_Reads[match(annots$IDs, df$ID)]
 annots$Unique_Percent = df$Unique[match(annots$IDs, df$ID)]
 annots$Mapped_Percent = df$Total_Mapped[match(annots$IDs, df$ID)]
+
+annots %>% 
+  DT::datatable(caption = "RNAseq Cohort")
+
 ```
 
 
