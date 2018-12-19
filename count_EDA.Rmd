@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 #!/usr/bin/env Rscript
 args = commandArgs( trailingOnly=TRUE )
 
-if (length(args)!= 2) {
+if (length(args) != 2) {
   stop("Count Matrix must be given & STAR Log dir .n", call.=FALSE)
 }
 #print(args[1])
@@ -29,21 +29,21 @@ print(args[2])
 ```
 
 ```{r }
+counts = read.csv(args[1], row.names =1)
+annots = data.frame("IDs" = colnames(counts), "Sample" = as.factor(1) )
 
 Logs = read.csv(args[2] )
-annots$Tota_Reads = df$Total_Reads[match(annots$IDs, df$ID)]
-annots$Unique_Percent = df$Unique[match(annots$IDs, df$ID)]
-annots$Mapped_Percent = df$Total_Mapped[match(annots$IDs, df$ID)]
+annots$Tota_Reads = Logs$Total_Reads[match(annots$IDs, Logs$ID) ]
+annots$Unique_Percent = Logs$Unique[match(annots$IDs, Logs$ID) ]
+annots$Mapped_Percent = Logs$Total_Mapped[match(annots$IDs, Logs$ID) ]
 
 annots %>% 
-  DT::datatable(caption = "RNAseq Cohort")
-
+  DT::datatable(caption = "Samples")
 ```
 
 
-```{r EDA, eval =FALSE}
-counts = read.csv(args[1], row.names =1)
-annots = data.frame("IDs" = colnames(counts), "Sample" = as.factor(1) )
+```{r EDA}
+
 
 DEmat =DESeqDataSetFromMatrix(countData = counts, colData = annots, design = ~ 1 ) 
 DE  = DESeq(DEmat)
@@ -96,4 +96,6 @@ print(paste("There are ",sum(outliers)," outliers samples based on a bicor dista
 print(colnames(counts)[outliers])
 
 ```
+
+
 
