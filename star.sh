@@ -1,17 +1,17 @@
-#BSUB -P Paris
-#BSUB -R "rusage[mem=6000]"
-#BSUB -n 8
-#BSUB -oo ./Logs/Paris_STAR.log -eo ./Logs/Paris_STAR.err
+#BSUB -P SKBTB
+#BSUB -R "rusage[mem=5000]"
+#BSUB -n 12
+#BSUB -oo ./Logs/KBTBD4_STAR.log -eo ./Logs/KBTBD4_STAR.err
 #BSUB -R "span[hosts=1]"
 
 RUN="YES"
-NCUT=22
-BASE="Paris"
+NCUT=26
+BASE="north"
 TRIM="NO"
 REPAIR="NO"
 SPECIES="MOUSE"
-PROJ="SHHalpha"
-THR=8
+PROJ="KBTBD4"
+THR=12
 
 ## Map reads using STAR multi-sample protocol
 ## first map using basic params
@@ -173,8 +173,7 @@ STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
     --alignIntronMin 20 \
     --outFilterType BySJout \
     --outTmpDir $TMPDIR/tmp2${SAMP}
-   
-   #Add XS attribute
+
    INBAM="./Data/${BASE}/${SAMP}Aligned.out.bam"
    SORTBAM="./BAM/${BASE}/${SAMP}Aligned.sortedByCoord.out.bam"
 
