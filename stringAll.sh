@@ -13,7 +13,7 @@ THR=5
 
 module load samtools/1.9
 
-## USE $LSB_JOBINDEX to select sample from SHHs.txt
+## USE $LSB_JOBINDEX to select sample from ./Raw
 SAMP=$( ls ./Raw | awk -v ind="$LSB_JOBINDEX" 'FNR == ind {print}' )
 
 GTF="/home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf"
