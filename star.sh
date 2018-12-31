@@ -1,14 +1,17 @@
-#BSUB -P SYC07
+#BSUB -P SKBTB
 #BSUB -R "rusage[mem=5000]"
-#BSUB -n 10
-#BSUB -oo ./Logs/SYC07_STAR.log -eo ./Logs/SYC07_STAR.err
+#BSUB -n 12
+#BSUB -oo ./Logs/KBTBD4_STAR.log -eo ./Logs/KBTBD4_STAR.err
 #BSUB -R "span[hosts=1]"
+
 RUN="YES"
-NCUT=24
-BASE="SYC07"
-TRIM="YES"
+NCUT=26
+BASE="north"
+TRIM="NO"
 REPAIR="NO"
-THR=10
+SPECIES="MOUSE"
+PROJ="KBTBD4"
+THR=12
 
 ## Map reads using STAR multi-sample protocol
 ## first map using basic params
@@ -29,7 +32,11 @@ STAR --version
 ADAPTERS=/home/bgudenas/Annots/truseq.fa
 
 ### ENSEMBL annots
+GENDIR="/home/bgudenas/Annots/Mouse/mm10_star99"
+if [ "$SPECIES" = "HUMAN" ]
+    then
 GENDIR="/home/bgudenas/Annots/Human/star_GRCh38_99"
+fi
 #########################################
 
 SAMPNUM=$(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |  sed 's!.*/!!' | sort | uniq -d | wc -l)
@@ -166,16 +173,12 @@ STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
     --alignIntronMin 20 \
     --outFilterType BySJout \
     --outTmpDir $TMPDIR/tmp2${SAMP}
-   
-   #Add XS attribute
+
    INBAM="./Data/${BASE}/${SAMP}Aligned.out.bam"
    SORTBAM="./BAM/${BASE}/${SAMP}Aligned.sortedByCoord.out.bam"
 
 sambamba sort -t $THR -m 48G --tmpdir $TMPDIR \
  	-o $SORTBAM $INBAM   
-
-  # samtools view --threads $THR -h $SORTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > "./Data/"${BASE}"/"${SAMP}"XS.bam"
-
 	fi
 done
 
@@ -189,6 +192,6 @@ if [ "$RUN" = "YES" ]
 	cd ./Data/${BASE}
 	Rscript /home/bgudenas/src/Parse_STARLogs.R ${BASE}
 	Rscript /home/bgudenas/src/countMat.R "Human"
-	cd ../..
+    cd ../..
+    R -e "rmarkdown::render('/home/bgudenas/src/counts_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/home/bgudenas/Proj/${PROJ}/Results/${BASE}_CountMat.csv" "/home/bgudenas/Proj/${PROJ}/Data/${BASE}/${BASE}_STAR_Logs.csv"
 fi
-
