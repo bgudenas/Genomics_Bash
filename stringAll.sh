@@ -1,99 +1,85 @@
-#BSUB -P STIE
-#BSUB -R "rusage[mem=3000]"
-#BSUB -n 16
-#BSUB --o mapped.out --eo mapped.err
+#BSUB -P Stringtie
+#BSUB -R "rusage[mem=10000]"
+#BSUB -n 5
+#BSUB -J "Stringstar[1-170]"
+#BSUB -R "span[hosts=1]"
 
-RUN="NO"
-NCUT=12
-BASE="SRA"
-THR=16
+#set -ueo pipefail 
 
-## Stringtie - transcript quantification
+RUN="YES"
+MERGE="NO"
+TWOPASS="NO"
+THR=5
 
-### BAM files should be in ./Data/${BASE}/ with *XS.bam
+module load samtools/1.9
 
+## USE $LSB_JOBINDEX to select sample from ./Raw
+SAMP=$( ls ./Raw | awk -v ind="$LSB_JOBINDEX" 'FNR == ind {print}' )
 
-### ENSEMBL annots
-GTF="../../Annots/Mouse/mmGenes92.gtf"
+GTF="/home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf"
 
-module purge
-printf "STRINGTIE ASSEMBLY ############ \n"
 date
 stringtie --version
-module load R/3.4.0
 
-
-
-#########################################
-
-SAMPNUM=$(ls ./Data/${BASE}/*XS.bam  | wc -l)
-printf "SAMPLES DETECTED = ${SAMPNUM} \n"
-
-mkdir -p ./Stringtie/${BASE}
-
-for i in $(ls ./Data/${BASE}/*XS.bam | rev | cut -c 7- | rev)
-do	
     printf "\n"  
-    SAMP=$(basename ${i})
     echo "SAMPLE##################"
     echo $SAMP
-    
-    BAM=${i}"XS.bam"
+
+BAM="/scratch_space/bgudenas/Landscape/"${SAMP}"XS.bam"
+
+if [ ! -f $BAM ];
+    then 
+
+    BAM="./Data/"${i}"Aligned.sortedByCoord.out.bam"
     echo "BAM---####"
     ls -lh $BAM
-    OUT="./Stringtie/"${BASE}"/"${SAMP}".gtf"
 
-if [ "$RUN" = "YES" ]
-	then
+## Add XS strand to BAM
+samtools view --threads $THR -h $BAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > "/scratch_space/bgudenas/Landscape/"${SAMP}"XS.bam"
 
-  stringtie -p $THR --rf -G $GTF -o $OUT -l $SAMP $BAM
 fi
-done
 
-if [ "$RUN" = "YES" ]
+BAM="/scratch_space/bgudenas/Landscape/"${SAMP}"XS.bam"
+
+OUTSTRING="./Stringtie/"${SAMP}".gtf"
+
+if [ "$RUN" = "YES" ] && [ ! -f $OUTSTRING ];
+    then
+
+  stringtie -p $THR -j 2 --rf -G $GTF -o $OUTSTRING -l $SAMP $BAM
+fi
+
+
+OUTGTF="./Stringtie/Assembled/stringtie_merged.gtf"
+
+if [ "$MERGE" = "YES" ] && [ ! -f $OUTGTF ]
   then
 
-printf "######################################\n"
-printf "MERGE\n"
-printf "######################################"
+    printf "######################################\n"
+    printf "MERGE\n"
+    printf "######################################"
 
-mkdir -p ./Stringtie/${BASE}/Assembled
+    mkdir -p ./Stringtie/Assembled
 
-MERGE="./Stringtie/"${BASE}"/Assembled/merge_list.txt"
-ls ./Stringtie/${BASE}/*.gtf > $MERGE
+    MERGE="./Stringtie/Assembled/merge_list.txt"
+    ls ./Stringtie/*.gtf > $MERGE
 
-cat $MERGE
-OUTGTF="./Stringtie/"${BASE}"/Assembled/stringtie_merged.gtf"
+    cat $MERGE
 
-stringtie --merge -p $THR -F 0.5  -m 100 -G $GTF -o $OUTGTF $MERGE 
-awk '$3=="transcript"' $OUTGTF | wc -l
-
-printf "######################################\n"
-printf "BALLGOWN\n"
-printf "######################################"
-
-mkdir -p ./Stringtie/${BASE}/Ballgown
-
-for i in $(ls ./Data/${BASE}/*XS.bam | rev | cut -c 7- | rev)
-do  
-    printf "\n"  
-    SAMP=$(basename ${i})
-    echo "SAMPLE##################"
-    echo $SAMP
-    
-    BAM=${i}"XS.bam"
-
-    GENE_ABS="./Stringtie/"${BASE}"/Ballgown/"${SAMP}"/gene_abundances.tsv"
-    OUT="./Stringtie/"${BASE}"/Ballgown/"${SAMP}"/"${SAMP}".gtf"
-
-  stringtie -p $THR -B -e --rf -G $OUTGTF -A $GENE_ABS -o $OUT $BAM
-done
-
-
-cd ./Stringtie/${BASE}/Ballgown/
-Rscript /home/bgudenas/src/gene_expression_matrix.R
-cd ../../../
+    stringtie --merge -p $THR -G $GTF -o $OUTGTF $MERGE 
+    awk '$3=="transcript"' $OUTGTF | wc -l
 
 fi
 
-date
+GENE_ABS="./Stringtie/Ballgown/"${SAMP}"/gene_abundances.tsv"
+
+if [ "$TWOPASS" = "YES" ] && [ ! -f $GENE_ABS ]
+then
+
+    OUT="./Stringtie/Ballgown/"${SAMP}"/"${SAMP}".gtf"
+
+    stringtie -p $THR -B -e --rf -j 2 -G $OUTGTF -A $GENE_ABS -o $OUT $BAM
+
+fi
+
+  
