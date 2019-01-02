@@ -23,7 +23,7 @@ for ( i in readspergene){
   ### Select 4th column for Illumina stranded
   vals = vals[ ,c(4)]
 if ( sum(vals) == 0 ) {
-	print("SKIP", i, "All 0" )
+	print(paste("SKIP", i, "All 0"))
 	} else {
   		geneMat = cbind(geneMat, vals)
   		IDs = c(IDs,  unlist(strsplit(i, "Reads" ))[1] )
