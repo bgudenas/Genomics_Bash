@@ -1,16 +1,14 @@
-#BSUB -P SKBTB
-#BSUB -R "rusage[mem=5000]"
+#BSUB -P SPineo
+#BSUB -R "rusage[mem=6000]"
 #BSUB -n 12
-#BSUB -oo ./Logs/KBTBD4_STAR.log -eo ./Logs/KBTBD4_STAR.err
+#BSUB -oo ./Logs/Pineo_STAR.log -eo ./Logs/Pineo_STAR.err
 #BSUB -R "span[hosts=1]"
 
 RUN="YES"
-NCUT=26
-BASE="north"
-TRIM="NO"
+NCUT=22
+BASE="gajjagrp"
+TRIM="YES"
 REPAIR="NO"
-SPECIES="MOUSE"
-PROJ="KBTBD4"
 THR=12
 
 ## Map reads using STAR multi-sample protocol
@@ -32,11 +30,7 @@ STAR --version
 ADAPTERS=/home/bgudenas/Annots/truseq.fa
 
 ### ENSEMBL annots
-GENDIR="/home/bgudenas/Annots/Mouse/mm10_star99"
-if [ "$SPECIES" = "HUMAN" ]
-    then
 GENDIR="/home/bgudenas/Annots/Human/star_GRCh38_99"
-fi
 #########################################
 
 SAMPNUM=$(ls ./Raw/${BASE}*/*/*.fastq.gz | rev | cut -c ${NCUT}- | rev  |  sed 's!.*/!!' | sort | uniq -d | wc -l)
@@ -65,13 +59,13 @@ do
     ls -lh $R2
 
 ###################################
-    MR1="${TMPDIR}/Read1_${SAMP}.fastq.gz"
-    MR2="${TMPDIR}/Read2_${SAMP}.fastq.gz"
+    MR1="${TMPDIR}/Read1_${SAMP}.fastq"
+    MR2="${TMPDIR}/Read2_${SAMP}.fastq"
     
 if [ "$RUN" = "YES" ]
 	then
-    cat $R1 > $MR1
-    cat $R2 > $MR2
+    cat $R1 | gunzip > $MR1
+    cat $R2 | gunzip > $MR2
     
     ls -lh $MR1
     ls -lh $MR2
@@ -79,20 +73,20 @@ if [ "$RUN" = "YES" ]
 if [ "$TRIM" = "YES" ]
     then
 
-TR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
-TR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+TR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq"
+TR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq"
 
 if [ "$REPAIR" = "YES" ]
     then
 ## Fix misordered paired-end files
-FR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq.gz"
-FR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq.gz"
+FR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq"
+FR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq"
 
 repair.sh -Xmx12g in1=$MR1 in2=$MR2 out1=$FR1 out2=$FR2 outs=$TMPDIR/singletons.fq
 
 ## overwrite input to trim
-MR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq.gz"
-MR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq.gz"
+MR1="${TMPDIR}/Read1_Fix_${SAMP}.fastq"
+MR2="${TMPDIR}/Read2_Fix_${SAMP}.fastq"
 ls -lh $MR1
 ls -lh $MR2
 fi
@@ -102,14 +96,14 @@ fi
       	ref=$ADAPTERS ktrim=r ordered \
        	k=23 mink=11 hdist=1 tbo tpe \
        	rcomp=f \
-	    ow=t \
-	    minlen=30 \
-	    trimq=10 \
-	    qtrim=rl
+	ow=t \
+	minlen=30 \
+	trimq=10 \
+	qtrim=rl
 
 echo "TRIMMED ##########"
-MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
-MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq"
+MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq"
 ls -lh $MR1
 ls -lh $MR2
 fi
@@ -118,7 +112,7 @@ if [ ! -f ./Data/${BASE}/SJ/${SAMP}SJ.out.tab ];
 	then
     echo "STAR"
     STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
-    --runThreadN $THR --readFilesCommand zcat \
+    --runThreadN $THR \
     --outFileNamePrefix $TMPDIR/${SAMP} \
     --outTmpDir $TMPDIR/tmp${SAMP} \
     --outFilterMismatchNmax 999 \
@@ -151,16 +145,16 @@ do
     echo "ROUND 2 -- ${SAMP}"
 if [ "$RUN" = "YES" ]
 	then
-    MR1="${TMPDIR}/Read1_${SAMP}.fastq.gz"
-    MR2="${TMPDIR}/Read2_${SAMP}.fastq.gz"
+    MR1="${TMPDIR}/Read1_${SAMP}.fastq"
+    MR2="${TMPDIR}/Read2_${SAMP}.fastq"
     if [ "$TRIM" = "YES" ]
         then
-        MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq.gz"
-        MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq.gz"
+        MR1="${TMPDIR}/Read1_Trim_${SAMP}.fastq"
+        MR2="${TMPDIR}/Read2_Trim_${SAMP}.fastq"
         fi
 
 STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
-    --runThreadN $THR --readFilesCommand zcat \
+    --runThreadN $THR \
     --outFileNamePrefix ./Data/${BASE}/${SAMP} \
     --outSAMtype BAM Unsorted \
     --quantMode GeneCounts  \
@@ -173,12 +167,16 @@ STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
     --alignIntronMin 20 \
     --outFilterType BySJout \
     --outTmpDir $TMPDIR/tmp2${SAMP}
-
+   
+   #Add XS attribute
    INBAM="./Data/${BASE}/${SAMP}Aligned.out.bam"
    SORTBAM="./BAM/${BASE}/${SAMP}Aligned.sortedByCoord.out.bam"
 
 sambamba sort -t $THR -m 48G --tmpdir $TMPDIR \
  	-o $SORTBAM $INBAM   
+
+  # samtools view --threads $THR -h $SORTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > "./Data/"${BASE}"/"${SAMP}"XS.bam"
+
 	fi
 done
 
@@ -192,6 +190,5 @@ if [ "$RUN" = "YES" ]
 	cd ./Data/${BASE}
 	Rscript /home/bgudenas/src/Parse_STARLogs.R ${BASE}
 	Rscript /home/bgudenas/src/countMat.R "Human"
-    cd ../..
-    R -e "rmarkdown::render('/home/bgudenas/src/counts_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/home/bgudenas/Proj/${PROJ}/Results/${BASE}_CountMat.csv" "/home/bgudenas/Proj/${PROJ}/Data/${BASE}/${BASE}_STAR_Logs.csv"
+	cd ../..
 fi
