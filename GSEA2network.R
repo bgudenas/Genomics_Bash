@@ -1,5 +1,5 @@
 
-GSEA2network = function(fgseaRes, GO, outname ){
+GSEA2network = function(fgseaRes, GO, outname, minMod = 2, grey = TRUE){
   library(dplyr)
   fgseaRes$Length =0
   for (i in 1:nrow(fgseaRes)){
@@ -60,9 +60,14 @@ GSEA2network = function(fgseaRes, GO, outname ){
     as.data.frame()
   
   ## Select top 10% of edges for visualization
-  df2 = df2[df2$value > quantile(df2$value, 0.90), ]
+  df2 = df2[df2$value > quantile(df2$value, 0.80), ]
   
-  df2 = rbind(keeps, df2) %>% 
+  keepsUpper = df2 %>% 
+    group_by(Var1) %>% 
+    top_n(3, value) %>% 
+    as.data.frame()
+  
+  df2 = rbind(keeps, keepsUpper) %>% 
     distinct()
   
   df2 = df2[ ,1:3]
@@ -70,20 +75,20 @@ GSEA2network = function(fgseaRes, GO, outname ){
   length(unique(df2$SourceNode))
   write.table(df2, paste0("./Results/GSEAnet/", outname, "_network.txt") , sep = "\t", row.names = FALSE, quote = FALSE)
   
-  fgseaRes = fgseaRes[ ,c(1,3,5,9) ]
+  #fgseaRes = fgseaRes[ ,c(1,3,5,9) ]
   fgseaRes$padj = -log10(fgseaRes$padj)
   
   ## Cluster nodes using dynamic tree cut, for colors
   distMat = as.dist(1-df)
   dendro = hclust(distMat, method = "average" )
-  clust = dynamicTreeCut::cutreeDynamicTree( dendro, minModuleSize = 2,  deepSplit = FALSE)
+  clust = dynamicTreeCut::cutreeDynamicTree( dendro, minModuleSize = minMod,  deepSplit = TRUE)
   print(table(clust) )
   fgseaRes$Colors = WGCNA::labels2colors(clust)
   
   
   keeps =   fgseaRes %>% 
     dplyr::group_by(Colors) %>%
-    dplyr::top_n( 1, NES + padj)
+    dplyr::top_n( 1, abs(NES) )
   
   fgseaRes$RName = fgseaRes$pathway
   fgseaRes$RName[ is.na(match(fgseaRes$pathway, keeps$pathway))] = ""
