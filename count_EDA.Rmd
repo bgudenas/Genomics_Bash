@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 # 
 # BASE="Clingen"
-# R -e "rmarkdown::render('/Users/bgudenas/Helpers/Count_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" 
+# R -e "rmarkdown::render('/Users/bgudenas/Helpers/Count_EDA.Rmd', output_file = '${BASE}_EDA.html', output_dir = './Results' )" --args "/Users/bgudenas/Desktop/Projects/SHHalpha/Counts/${BASE}_CountMat.csv" "/Users/bgudenas/Desktop/Projects/SHHalpha/Logs/${BASE}_STAR_Logs.csv" 
 ```
 
 
@@ -20,34 +20,31 @@ args = commandArgs( trailingOnly=TRUE )
 if (length(args) != 2) {
   stop("Count Matrix must be given & STAR Log dir .n", call.=FALSE)
 }
-#print(args[1])
-print(args[2])
-#library(DESeq2)
-#library(WGCNA)
-#library(ggplot2)
-#library(Rtsne)
+
+library(DESeq2)
+library(WGCNA)
+library(ggplot2)
+
 ```
 
 ```{r }
 counts = read.csv(args[1], row.names =1)
 annots = data.frame("IDs" = colnames(counts), "Sample" = as.factor(1) )
 
-Logs = read.csv(args[2] )
-annots$Tota_Reads = Logs$Total_Reads[match(annots$IDs, Logs$ID) ]
-annots$Unique_Percent = Logs$Unique[match(annots$IDs, Logs$ID) ]
-annots$Mapped_Percent = Logs$Total_Mapped[match(annots$IDs, Logs$ID) ]
+Logs = read.csv(args[2], row.names =1)
+annots$Total_Reads = Logs$Total_Reads[match(annots$IDs, Logs$ID) ]
+annots$Unique = Logs$Unique[match(annots$IDs, Logs$ID) ]
+annots$Multimap = Logs$Manymap[match(annots$IDs, Logs$ID) ]
+annots$Total_Mapped = Logs$Total_Mapped[match(annots$IDs, Logs$ID) ]
 
-annots %>% 
-  DT::datatable(caption = "Samples")
+  DT::datatable(annots, caption = "Samples")
 ```
 
 
 ```{r EDA}
 
-
 DEmat =DESeqDataSetFromMatrix(countData = counts, colData = annots, design = ~ 1 ) 
 DE  = DESeq(DEmat)
-
 
 boxplot(log10(assays(DE)[["cooks"]]), range=0, las=2, ylab = expression(Log[10]~Cooks~Distance), main = "Sample Counts" )
 
@@ -55,12 +52,12 @@ vsd <- varianceStabilizingTransformation(DE, blind = TRUE)
 plotPCA(vsd, intgroup = "Sample", ntop = 2000) + 
 #  ggplot( aes(x = PC1, y = PC2 )) +
   geom_point(alpha = 0) +
-  geom_text(aes(label = annots$IDs ), col = "Black", size = 10) + 
+  geom_text(aes(label = annots$IDs ), col = "Black", size = 4) + 
   theme(legend.position="none")
 
 
 counts = assay(vsd)
-counts = counts[rowVars(counts) > median(rowVars(counts)), ]
+counts = counts[rowVars(counts) > quantile(rowVars(counts))[[4]], ]
 
 sampleDists = as.dist( 1 - cor(counts) ) 
 sampleDistMatrix <- as.matrix(sampleDists)
@@ -76,8 +73,6 @@ pheatmap::pheatmap(sampleDistMatrix,
                    scale = "row",
                    show_colnames = FALSE,
                    main = "BLIND Sample Clustering (VST)")
-
-
 
 sdout <- 3
 normadj <- (0.5+0.5*bicor(counts))^2
@@ -96,6 +91,4 @@ print(paste("There are ",sum(outliers)," outliers samples based on a bicor dista
 print(colnames(counts)[outliers])
 
 ```
-
-
 
