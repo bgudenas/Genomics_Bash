@@ -50,4 +50,3 @@ if [ "$RUN" = "YES" ]
 cat $R1 | gunzip > $MR1
 cat $R2 | gunzip > $MR2
 fi
-
