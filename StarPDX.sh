@@ -72,7 +72,8 @@ if [ ! -f  $SORTBAM ]; ## if Bam does not exist
  # rm $INBAM
 fi
 
-if [ ! -f ./Disambig/disambiguatedSpeciesA.bam ]
+Human=./Disambig/${SAMP}.disambiguatedSpeciesA.bam
+if [ ! -f $Human ]
 	then
 module load disambiguate
 disambiguate.py -s ${SAMP} \
@@ -84,7 +85,10 @@ disambiguate.py -s ${SAMP} \
 		-o Disambig
 fi
 
-module load htseq/0.6.1p1
+module purge
+module load htseq
+which python
 
-htseq-count -f bam -r order name -s yes \
-./Disambig/disambiguatedSpeciesA.bam /home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf > Counts/${SAMP}_Counts.txt
+GTF=/home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf
+htseq-count -f bam -r name -s yes \
+$Human $GTF > Counts/${SAMP}_Counts.txt
