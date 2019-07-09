@@ -20,7 +20,6 @@ ls $R2
 
 SAMP=$( basename $R1 | rev | cut -c 10- | rev )
 
-
 ### Human
 INBAM="./Data/Human/${SAMP}Aligned.out.bam"
 SORTBAM="./Data/Human/${SAMP}_Sorted.bam"
@@ -85,10 +84,40 @@ disambiguate.py -s ${SAMP} \
 		-o Disambig
 fi
 
-module purge
-module load htseq
-which python
+module load star/2.6.1c
+GATK=/home/bgudenas/Software/gatk-4.1.1.0/gatk
+module load java/1.8.0_181
 
-GTF=/home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf
-htseq-count -f bam -r name -s yes \
-$Human $GTF > Counts/${SAMP}_Counts.txt
+if [ ! -f ./Data/Final/${SAMP}Aligned.out.bam ]
+	then
+$GATK CleanSam \
+	--TMP_DIR=$TMPDIR \
+	--VERBOSITY=ERROR \
+	--VALIDATION_STRINGENCY=LENIENT \
+	-I=$Human	\
+	-O=$TMPDIR/${SAMP}.bam
+
+$GATK SamToFastq \
+    --TMP_DIR $TMPDIR \
+    -F $TMPDIR/${SAMP}_R1.fastq \
+    -F2 $TMPDIR/${SAMP}_R2.fastq \
+    -I=$TMPDIR/${SAMP}.bam
+
+ls -lh $R1
+ls -lh $R2
+
+  STAR --runMode alignReads --genomeDir $HsGENDIR --readFilesIn $TMPDIR/${SAMP}_R1.fastq $TMPDIR/${SAMP}_R2.fastq \
+    --runThreadN $THR \
+    --outSAMtype BAM  Unsorted \
+    --quantMode GeneCounts \
+    --outFilterMismatchNmax 999 \
+    --outFilterMismatchNoverReadLmax 0.05 \
+    --outFileNamePrefix ./Data/Final/${SAMP} \
+    --outTmpDir $TMPDIR/tmp${SAMP} \
+    --outFilterType BySJout \
+    --peOverlapNbasesMin 10 \
+    --outFilterMultimapNmax 20 \
+    --alignSJDBoverhangMin 1
+
+fi
+
