@@ -26,3 +26,4 @@ SAMP=$( basename $R1 | rev | cut -c 10- | rev )
         minlen=30 \
         trimq=5 \
         qtrim=rl
+rm $TMPDIR/*_R*.fastq
