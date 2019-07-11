@@ -7,6 +7,8 @@ THR=$1
 echo 'Read Length = ' $2
 RL=$2
 module purge
+module load star/2.6.1c
+module load sambamba
 
 R1=$(ls $TMPDIR/*1.fastq )
 ls $R1
@@ -14,6 +16,7 @@ R2=$(ls $TMPDIR/*2.fastq )
 ls $R2
 
 SAMP=$( basename $R1 | rev | cut -c 10- | rev )
+echo $SAMP
 mkdir -p ./GATK/BAM
 mkdir -p ./GATK/BQSR
 mkdir -p ./GATK/HC
@@ -33,7 +36,7 @@ GENDIR=$BUNDLE/STAR_index
 GATK=/home/bgudenas/Software/gatk-4.1.1.0/gatk
 module load java/1.8.0_181 
 
-DUP=./GATK/BAM/{SAMP}_DUP.bam
+DUP=./GATK/BAM/${SAMP}_DUP.bam
 if [ ! -f $DUP ]
  	then
 
@@ -55,16 +58,24 @@ STAR --runMode alignReads --genomeDir $GENDIR --sjdbOverhang $RL --readFilesIn $
 $GATK MarkDuplicates \
 		-I $SORTBAM \
 		-O $DUP \
+		-M "./GATK/Metrics/${SAMP}_metric.txt" \
 		--CREATE_INDEX TRUE 1> /dev/null
 	fi
 
-SPLIT=./GATK/BAM/{SAMP}_SPLIT.bam
+SPLIT=./GATK/BAM/${SAMP}_SPLIT.bam
 if [ ! -f $SPLIT ]
 	 	then
+$GATK AddOrReplaceReadGroups \
+-I  $DUP \
+-O $TMPDIR/${SAMP}_RG.bam \
+-LB $SAMP \
+-PL "illumina" \
+-PU "Hiseq2500" \
+-SM $SAMP
 
 $GATK SplitNCigarReads \
       -R $FASTA \
-      -I $DUP \
+      -I $TMPDIR/${SAMP}_RG.bam \
       -L $INTERVAL \
       --tmp-dir $TMPDIR \
       -O $SPLIT
