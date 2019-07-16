@@ -17,6 +17,7 @@ R2=$(ls $TMPDIR/*2.fastq )
 ls $R2
 
 SAMP=$( basename $R1 | rev | cut -c 10- | rev )
+echo $SAMP
 
 mkdir -p ./Stringtie/BAM
 mkdir -p ./Stringtie/Samps
@@ -43,7 +44,6 @@ sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
 
 	samtools view --threads $THR -h $SORTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > $XSBAM
 fi
-
 	printf "STRINGTIE ASSEMBLY ############ \n"
 	date
 	stringtie --version
@@ -55,22 +55,20 @@ if [ ! -f $OUT ];
 	stringtie -p $THR --rf -G $GTF -o $OUT -l $SAMP $XSBAM
 fi
 
-
+MEGA=./Stringtie/Merged/stringtie_merged.gtf
 COUNT=$( ls ./Stringtie/Samps/*.gtf | wc -l )
 if [ ! -f $MEGA ] && [ $SAMPNUM -eq $COUNT ] ;
 	then
-	MERGE="./Stringtie/Assembled/merge_list.txt"
+	MERGE=./Stringtie/Merged/merge_list.txt
 	ls ./Stringtie/Samps/*.gtf > $MERGE
 	cat $MERGE
 	wc -l MERGE
-	MEGA=./Stringtie/Merged/stringtie_merged.gtf
-
 	stringtie --merge -p $THR -G $GTF -o $MEGA $MERGE 
 fi
 
 	GENE_ABS=./Stringtie/Ballgown/${SAMP}/gene_abundances.tsv
     OUT=./Stringtie/Ballgown/${SAMP}/${SAMP}.gtf
-if [ -f $MEGA ] &&  [ ! -f $OUT];
+if [ -f $MEGA ] &&  [ ! -f $OUT ];
 	then
 	stringtie -p $THR -B -e --rf -G $MEGA -A $GENE_ABS -o $OUT $XSBAM
 fi

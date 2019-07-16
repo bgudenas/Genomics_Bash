@@ -1,0 +1,59 @@
+#!/bin/bash
+
+echo 'Threads = ' $1
+THR=$1
+
+module purge
+module load star/2.6.1c
+GENDIR="/home/bgudenas/Annots/Human/star_GRCh38_99/"
+module load samtools/1.7
+
+R1=$(ls $TMPDIR/*R1.fastq )
+ls $R1
+R2=$(ls $TMPDIR/*R2.fastq )
+ls $R2
+
+SAMP=$( basename $R1 | rev | cut -c 10- | rev )
+
+mkdir -p ./Stringtie/BAM/
+mkdir -p ./Stringtie/Samps/
+mkdir -p ./Stringtie/Merged
+mkdir -p ./Stringtie/Ballgown
+
+INBAM=$TMPDIR/${SAMP}Aligned.out.bam
+SORTBAM=$TMPDIR/${SAMP}_Sorted.bam
+if [ ! -f  $SORTBAM ]; ## if Bam does not exist
+    then
+
+STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $MR1 $MR2 \
+    --runThreadN $THR \ 
+    --outFileNamePrefix $TMPDIR/${SAMP} \
+    --outSAMtype BAM Unsorted \
+    --outSAMattrIHstart 0 \
+    --twopassMode Basic \
+    --alignSJstitchMismatchNmax 1 -1 1 1 \
+    --outFilterType BySJout
+
+sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
+    --sort-by-name \
+    -o $SORTBAM $INBAM
+
+XSBAM=./Stringtie/BAM/${SAMP}XS.bam
+samtools view --threads $THR -h $SORTBAM | awk -v strType=2 -f /home/bgudenas/src/tagXSstrandedData.awk | samtools view --threads $THR -bS - > $XSBAM
+
+printf "STRINGTIE ASSEMBLY ############ \n"
+date
+stringtie --version
+GTF=/home/bgudenas/Annots/Human/Homo_sapiens.GRCh38.93.gtf
+OUT=./Stringtie/Samps/${SAMP}.gtf
+
+if [ ! -f $OUT ];
+	then
+stringtie -p $THR --rf -G $GTF -o $OUT -l $SAMP $XSBAM
+fi
+
+Merged=./Stringtie/Merged/
+if [ -f $Merged ];
+	then
+	stringtie -p $THR -B -e --rf -G $OUTGTF -A $GENE_ABS -o $OUT $XSBAM
+fi
