@@ -17,10 +17,11 @@ ls $R2
 
 SAMP=$( basename $R1 | rev | cut -c 10- | rev )
 echo $SAMP
-mkdir -p ./GATK/BAM
+mkdir -p $TMPDIR/BAM
 mkdir -p ./GATK/BQSR
 mkdir -p ./GATK/HC
 mkdir -p ./GATK/Filt
+mkdir -p ./GATK/Metrics
 
 ######### References
 ### GATK bundle
@@ -36,54 +37,57 @@ GENDIR=$BUNDLE/STAR_index
 GATK=/home/bgudenas/Software/gatk-4.1.1.0/gatk
 module load java/1.8.0_181 
 
-DUP=./GATK/BAM/${SAMP}_DUP.bam
+DUP=$TMPDIR/BAM/${SAMP}_DUP.bam
 if [ ! -f $DUP ]
- 	then
+then
 
 INBAM=${TMPDIR}/${SAMP}Aligned.out.bam
 SORTBAM=${TMPDIR}/${SAMP}_Sorted.bam
 
 STAR --runMode alignReads --genomeDir $GENDIR --sjdbOverhang $RL --readFilesIn $R1 $R2 \
-    --runThreadN $THR \
-    --outFileNamePrefix $TMPDIR/${SAMP} \
-    --outSAMtype BAM Unsorted \
-    --twopassMode Basic \
-    --limitSjdbInsertNsj 2000000 \
-    --limitOutSJcollapsed 2000000 \
-    --outTmpDir $TMPDIR/tmp${SAMP}
+--runThreadN $THR \
+--outFileNamePrefix $TMPDIR/${SAMP} \
+--outSAMtype BAM Unsorted \
+--twopassMode Basic \
+--limitSjdbInsertNsj 2000000 \
+--limitOutSJcollapsed 2000000 \
+--outTmpDir $TMPDIR/tmp${SAMP}
 
-  sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
-    -o $SORTBAM $INBAM
+sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
+-o $SORTBAM $INBAM
 
 $GATK MarkDuplicates \
-		-I $SORTBAM \
-		-O $DUP \
-		-M "./GATK/Metrics/${SAMP}_metric.txt" \
-		--CREATE_INDEX TRUE 1> /dev/null
-	fi
+-I $SORTBAM \
+-O $DUP \
+-M "./GATK/Metrics/${SAMP}_metric.txt" \
+--CREATE_INDEX TRUE 1> /dev/null
+fi
 
-SPLIT=./GATK/BAM/${SAMP}_SPLIT.bam
+SPLIT=$TMPDIR/BAM/${SAMP}_SPLIT.bam
 if [ ! -f $SPLIT ]
-	 	then
+then
 $GATK AddOrReplaceReadGroups \
 -I  $DUP \
 -O $TMPDIR/${SAMP}_RG.bam \
 -LB $SAMP \
 -PL "illumina" \
 -PU "Hiseq2500" \
+--CREATE_INDEX TRUE \
 -SM $SAMP
 
-$GATK SplitNCigarReads \
-      -R $FASTA \
-      -I $TMPDIR/${SAMP}_RG.bam \
-      -L $INTERVAL \
-      --tmp-dir $TMPDIR \
-      -O $SPLIT
-  fi
+#samtools index $TMPDIR/${SAMP}_RG.bam
 
-FIN=./GATK/${SAMP}_GATK.bam
+$GATK SplitNCigarReads \
+-R $FASTA \
+-I $TMPDIR/${SAMP}_RG.bam \
+-L $INTERVAL \
+--tmp-dir $TMPDIR \
+-O $SPLIT
+fi
+
+FIN=$TMPDIR/BAM/${SAMP}_GATK.bam
 if [ ! -f $FIN ]
-	 	then
+then
 
 $GATK BaseRecalibrator \
 -R $FASTA \
@@ -106,12 +110,12 @@ fi
 ### Variant calling
 VCF_HC=./GATK/HC/${SAMP}.vcf.gz
 if [ ! -f $VCF_HC ];
-	then
+then
 
 $GATK HaplotypeCaller  \
 -R $FASTA \
 -I $FIN \
---bam-output ./GATK/HC/${SAMP} \
+--bam-output ./GATK/HC/${SAMP}.bam \
 --create-output-bam-index TRUE \
 --dbsnp $REFSNP \
 --dont-use-soft-clipped-bases \
@@ -122,8 +126,8 @@ $GATK HaplotypeCaller  \
 fi
 
 MERGED=./GATK/Filt/${SAMP}_Merged.vcf.gz
-if [ ! -f $MERGED ]
-  then
+if [ ! -f $MERGED ];
+then
 
 $GATK SelectVariants \
 -V $VCF_HC \
@@ -173,4 +177,12 @@ ${ANNOVAR}/table_annovar.pl $TRIM /home/bgudenas/Software/annovar/humandb \
 ## also remove intronic variants
 header=$( cat ./Annovar/${SAMP}.hg38_multianno.vcf  | grep "CHROM" | cut -c 2- )
 module load R/3.4.0
-Rscript addlab.R ./Annovar/${SAMP}.hg38_multianno.txt $header
+Rscript /home/bgudenas/src/addlab.R ./Annovar/${SAMP}.hg38_multianno.txt $header
+
+val=$( wc -l ./Annovar/${SAMP}.hg38_multianno.txt )
+LINES=$( echo $val | grep -ohw "[0-9]*\+[[:space:]]\+" )
+if [ $LINES -eq 1 ];
+then
+echo "NO VARIANTS"
+  rm ./Annovar/${SAMP}.*i*
+  fi
