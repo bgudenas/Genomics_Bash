@@ -6,8 +6,11 @@ echo 'Threads = ' $1
 THR=$1
 echo 'Read Length = ' $2
 RL=$2
+echo 'GENDIR' = $3
+GENDIR=$3
+
 module purge
-module load star/2.6.1c
+module load star/2.7.1a
 module load sambamba
 
 R1=$(ls $TMPDIR/*1.fastq )
@@ -32,7 +35,6 @@ REFINDEL=$BUNDLE/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
 HSINDEL=$BUNDLE/Homo_sapiens_assembly38.known_indels.vcf.gz
 INTERVAL=$BUNDLE/wgs_calling_regions.hg38.interval_list
 
-GENDIR=$BUNDLE/STAR_index
 ##################
 GATK=/home/bgudenas/Software/gatk-4.1.1.0/gatk
 module load java/1.8.0_181 
@@ -44,13 +46,14 @@ then
 INBAM=${TMPDIR}/${SAMP}Aligned.out.bam
 SORTBAM=${TMPDIR}/${SAMP}_Sorted.bam
 
-STAR --runMode alignReads --genomeDir $GENDIR --sjdbOverhang $RL --readFilesIn $R1 $R2 \
+STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $R1 $R2 \
 --runThreadN $THR \
 --outFileNamePrefix $TMPDIR/${SAMP} \
 --outSAMtype BAM Unsorted \
---twopassMode Basic \
---limitSjdbInsertNsj 2000000 \
---limitOutSJcollapsed 2000000 \
+--outFilterMismatchNmax 999 \
+--outFilterMismatchNoverReadLmax 0.05 \
+--outFilterMultimapNmax 20 \
+--alignSJDBoverhangMin 1 \
 --outTmpDir $TMPDIR/tmp${SAMP}
 
 sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
@@ -59,8 +62,9 @@ sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
 $GATK MarkDuplicates \
 -I $SORTBAM \
 -O $DUP \
+--QUIET TRUE \
 -M "./GATK/Metrics/${SAMP}_metric.txt" \
---CREATE_INDEX TRUE 1> /dev/null
+--CREATE_INDEX TRUE > /dev/null 2>&1
 fi
 
 SPLIT=$TMPDIR/BAM/${SAMP}_SPLIT.bam
@@ -82,7 +86,7 @@ $GATK SplitNCigarReads \
 -I $TMPDIR/${SAMP}_RG.bam \
 -L $INTERVAL \
 --tmp-dir $TMPDIR \
--O $SPLIT
+-O $SPLIT > /dev/null 2>&1
 fi
 
 FIN=$TMPDIR/BAM/${SAMP}_GATK.bam
@@ -95,8 +99,9 @@ $GATK BaseRecalibrator \
 --known-sites $REFINDEL \
 --known-sites $HSINDEL \
 -L $INTERVAL \
+--QUIET TRUE \
 -I $SPLIT \
--O "./GATK/BQSR/${SAMP}-recal-table.txt" 1> /dev/null
+-O "./GATK/BQSR/${SAMP}-recal-table.txt" > /dev/null 2>&1
 
 $GATK ApplyBQSR \
 -R $FASTA \
