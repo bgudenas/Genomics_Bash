@@ -25,11 +25,11 @@ mkdir -p ./GATK/BQSR
 mkdir -p ./GATK/HC
 mkdir -p ./GATK/Filt
 mkdir -p ./GATK/Metrics
-
+mkdir -p ./GATK/Logs
 ######### References
 ### GATK bundle
 BUNDLE=/research/rgs01/project_space/northcgrp/Northcott_Bioinformatics/northcgrp/References/Human/GATK/hg38/
-FASTA=$BUNDLE/Homo_sapiens_assembly38.fasta
+  FASTA=$BUNDLE/Homo_sapiens_assembly38.fasta
 REFSNP=$BUNDLE/dbsnp_146.hg38.vcf.gz
 REFINDEL=$BUNDLE/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
 HSINDEL=$BUNDLE/Homo_sapiens_assembly38.known_indels.vcf.gz
@@ -40,11 +40,16 @@ GATK=/home/bgudenas/Software/gatk-4.1.1.0/gatk
 module load java/1.8.0_181 
 
 DUP=$TMPDIR/BAM/${SAMP}_DUP.bam
-if [ ! -f $DUP ]
+if [ -f ./Annovar/${SAMP}.hg38_multianno.txt ]
 then
+exit 1
+fi
 
 INBAM=${TMPDIR}/${SAMP}Aligned.out.bam
 SORTBAM=${TMPDIR}/${SAMP}_Sorted.bam
+
+if [ ! -f ./GATK/BAM/${SAMP}_RG.bam ]
+then
 
 STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $R1 $R2 \
 --runThreadN $THR \
@@ -56,6 +61,8 @@ STAR --runMode alignReads --genomeDir $GENDIR --readFilesIn $R1 $R2 \
 --alignSJDBoverhangMin 1 \
 --outTmpDir $TMPDIR/tmp${SAMP}
 
+mv $TMPDIR/${SAMP}Log.final.out ./GATK/Logs
+
 sambamba sort -t $THR -m 38G --tmpdir $TMPDIR \
 -o $SORTBAM $INBAM
 
@@ -65,29 +72,27 @@ $GATK MarkDuplicates \
 --QUIET TRUE \
 -M "./GATK/Metrics/${SAMP}_metric.txt" \
 --CREATE_INDEX TRUE > /dev/null 2>&1
-fi
 
-SPLIT=$TMPDIR/BAM/${SAMP}_SPLIT.bam
-if [ ! -f $SPLIT ]
-then
 $GATK AddOrReplaceReadGroups \
 -I  $DUP \
--O $TMPDIR/${SAMP}_RG.bam \
+-O ./GATK/BAM/${SAMP}_RG.bam \
 -LB $SAMP \
 -PL "illumina" \
 -PU "Hiseq2500" \
 --CREATE_INDEX TRUE \
 -SM $SAMP
 
-#samtools index $TMPDIR/${SAMP}_RG.bam
+fi
+
+SPLIT=$TMPDIR/BAM/${SAMP}_SPLIT.bam
 
 $GATK SplitNCigarReads \
 -R $FASTA \
--I $TMPDIR/${SAMP}_RG.bam \
+-I ./GATK/BAM/${SAMP}_RG.bam \
 -L $INTERVAL \
 --tmp-dir $TMPDIR \
 -O $SPLIT > /dev/null 2>&1
-fi
+
 
 FIN=$TMPDIR/BAM/${SAMP}_GATK.bam
 if [ ! -f $FIN ]
@@ -171,7 +176,7 @@ $GATK SelectVariants \
 --exclude-filtered
 
 ANNOVAR=/home/bgudenas/Software/annovar/
-HUMANDB=/home/bgudenas/Software/annovar/humandb
+  HUMANDB=/home/bgudenas/Software/annovar/humandb
 mkdir ./Annovar
 
 ${ANNOVAR}/table_annovar.pl $TRIM /home/bgudenas/Software/annovar/humandb \
@@ -189,5 +194,5 @@ LINES=$( echo $val | grep -ohw "[0-9]*\+[[:space:]]\+" )
 if [ $LINES -eq 1 ];
 then
 echo "NO VARIANTS"
-  rm ./Annovar/${SAMP}.*i*
+rm ./Annovar/${SAMP}.*i*
   fi
