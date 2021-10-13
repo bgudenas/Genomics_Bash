@@ -1,4 +1,5 @@
 #!/bin/bash
+# TODO add option to retain sorted bam file
 
 echo 'Threads = ' $1
 THR=$1
